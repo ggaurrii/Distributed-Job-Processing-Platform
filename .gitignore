@@ -1,0 +1,31 @@
+# Build & binaries
+build/
+bin/
+*.o
+*.a
+*.exe
+*.out
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Frontend
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.oxlintrc.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Database & runtime
+pgdata/
+*.log
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,69 @@
+# One image contains all binaries; each service just picks which one to run.
+x-app: &app
+  image: conveyor-cpp:dev
+  build:
+    context: ..
+
+x-env: &env
+  DATABASE_URL: postgresql://conveyor:conveyor@postgres:5432/conveyor
+  LEASE_SECONDS: "10"     # short so crash recovery is fast in demos; use 30+ in real life
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: conveyor
+      POSTGRES_PASSWORD: conveyor
+      POSTGRES_DB: conveyor
+    volumes:
+      - ../migrations:/docker-entrypoint-initdb.d:ro   # *.sql run in order on first boot
+      - pgdata:/var/lib/postgresql/data
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conveyor"]
+      interval: 2s
+      retries: 20
+
+  api:
+    <<: *app
+    command: ["conveyor-api"]
+    environment: *env
+    ports: ["8080:8080"]
+    depends_on: { postgres: { condition: service_healthy } }
+
+  scheduler:
+    <<: *app
+    command: ["conveyor-scheduler"]
+    environment: *env
+    depends_on: { postgres: { condition: service_healthy } }
+
+  worker:
+    <<: *app
+    command: ["conveyor-worker"]
+    environment: { <<: *env, QUEUES: default, CONCURRENCY: "4" }
+    depends_on: { postgres: { condition: service_healthy } }
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    ports: ["3000:80"]
+    depends_on: ["api"]
+
+  # ---- chaos testing (only starts with --profile chaos) ----
+  worker-chaos:            # workers that randomly crash mid-job; Docker restarts them
+    <<: *app
+    profiles: ["chaos"]
+    command: ["conveyor-worker"]
+    restart: always
+    environment: { <<: *env, QUEUES: default, CONCURRENCY: "4", CRASH_PROB: "0.05" }
+    depends_on: { postgres: { condition: service_healthy } }
+
+  chaos:                   # the test client: submits jobs, checks none are lost
+    <<: *app
+    profiles: ["chaos"]
+    command: ["conveyor-chaos"]
+    environment: { API_URL: "http://api:8080", JOBS: "120" }
+
+volumes:
+  pgdata:
